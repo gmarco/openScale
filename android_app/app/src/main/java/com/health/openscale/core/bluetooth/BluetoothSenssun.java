@@ -26,6 +26,7 @@ import com.health.openscale.core.datatypes.ScaleUser;
 import com.health.openscale.core.utils.Converters;
 
 import java.util.Date;
+import java.util.Calendar;
 import java.util.UUID;
 
 import timber.log.Timber;
@@ -36,6 +37,7 @@ public class BluetoothSenssun extends BluetoothCommunication {
     private final UUID CMD_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xfff2); // write only
 
     private boolean scaleGotUserData;
+    private boolean scaleGotTime,scaleGotDate;
     private byte WeightFatMus = 0;
     private ScaleMeasurement measurement;
 
@@ -69,26 +71,80 @@ public class BluetoothSenssun extends BluetoothCommunication {
       }
     }
 
+    private void doChecksum(byte[] message){
+      byte verify = 0;
+      for (int i = 1; i < message.length - 2; i++) {
+          verify = (byte) (verify + message[i]);
+      }
+      message[message.length - 2] = verify;
+    }
+
+    private void sendToScale(){
+      sendUserData();
+      if (scaleGotUserData){
+        sendDate();
+        if (scaleGotDate){
+          sendTime();
+        }
+      }
+    }
+
     private void sendUserData(){
+
         if ( scaleGotUserData ){
           return;
         }
         final ScaleUser selectedUser = OpenScale.getInstance().getSelectedScaleUser();
 
-        byte gender = selectedUser.getGender().isMale() ? (byte)0xf1 : (byte)0x01;
+        byte gender = selectedUser.getGender().isMale() ? (byte)0xf1 : (byte)0x02;
         byte height = (byte) selectedUser.getBodyHeight(); // cm
         byte age = (byte) selectedUser.getAge();
 
         Timber.d("Request Saved User Measurements ");
         byte cmdByte[] = {(byte)0xa5, (byte)0x10, gender, age, height, (byte)0, (byte)0x0, (byte)0x0d2, (byte)0x00};
 
-        byte verify = 0;
-        for (int i = 1; i < cmdByte.length - 2; i++) {
-            verify = (byte) (verify + cmdByte[i]);
-        }
-        cmdByte[cmdByte.length - 2] = verify;
+        doChecksum(cmdByte);
+
         writeBytes(WEIGHT_MEASUREMENT_SERVICE, CMD_MEASUREMENT_CHARACTERISTIC, cmdByte);
     }
+    private void sendDate() {
+        if (scaleGotDate){
+          return;
+        }
+        Calendar cal = Calendar.getInstance();
+
+        byte message[] = new byte[]{(byte)0xA5, (byte)0x30, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00};
+        message[2] = (byte)Integer.parseInt(Long.toHexString(Integer.valueOf(String.valueOf(cal.get(Calendar.YEAR)).substring(2))), 16);
+
+        String DayLength=Long.toHexString(cal.get(Calendar.DAY_OF_YEAR));
+        DayLength=DayLength.length()==1?"000"+DayLength:
+                DayLength.length()==2?"00"+DayLength:
+                        DayLength.length()==3?"0"+DayLength:DayLength;
+
+        message[3]=(byte)Integer.parseInt(DayLength.substring(0,2), 16);
+        message[4]=(byte)Integer.parseInt(DayLength.substring(2,4), 16);
+
+        doChecksum(message);
+
+        writeBytes(WEIGHT_MEASUREMENT_SERVICE, CMD_MEASUREMENT_CHARACTERISTIC, message);
+    }
+
+    private void sendTime() {
+        if (scaleGotTime){
+          return;
+        }
+        Calendar cal = Calendar.getInstance();
+
+        byte message[] = new byte[]{(byte)0xA5, (byte)0x31, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00};
+
+        message[2]=(byte)Integer.parseInt(Long.toHexString(cal.get(Calendar.HOUR_OF_DAY)), 16);
+        message[3]=(byte)Integer.parseInt(Long.toHexString(cal.get(Calendar.MINUTE)), 16);
+        message[4]=(byte)Integer.parseInt(Long.toHexString(cal.get(Calendar.SECOND)), 16);
+
+        doChecksum(message);
+
+        writeBytes(WEIGHT_MEASUREMENT_SERVICE, CMD_MEASUREMENT_CHARACTERISTIC, message);
+  	}
 
     @Override
     protected boolean nextInitCmd(int stateNr) {
@@ -97,9 +153,11 @@ public class BluetoothSenssun extends BluetoothCommunication {
             case 0:
                 setNotificationOn(WEIGHT_MEASUREMENT_SERVICE, WEIGHT_MEASUREMENT_CHARACTERISTIC,
                         BluetoothGattUuid.DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION);
-                sendUserData();
+                sendToScale();
                 WeightFatMus = 0;
                 scaleGotUserData = false;
+                scaleGotDate = false;
+                scaleGotTime = false;
                 break;
             default:
                 // Finish init if everything is done
@@ -144,9 +202,15 @@ public class BluetoothSenssun extends BluetoothCommunication {
                 if (weightBytes[2] == (byte)0x10) {
                     scaleGotUserData = true;
                 }
+                if (weightBytes[2] == (byte)0x30) {
+                    scaleGotDate = true;
+                }
+                if (weightBytes[2] == (byte)0x31) {
+                    scaleGotTime = true;
+                }
                 break;
             case 0xa0:
-                sendUserData();
+                sendToScale();
                 break;
             case 0xaa:
                 float weight = Converters.fromUnsignedInt16Be(weightBytes, 2) / 10.0f; // kg
@@ -157,7 +221,7 @@ public class BluetoothSenssun extends BluetoothCommunication {
 
                 }
 
-                sendUserData();
+                sendToScale();
                 break;
             case 0xb0:
                 float fat = Converters.fromUnsignedInt16Be(weightBytes, 2) / 10.0f; // %
