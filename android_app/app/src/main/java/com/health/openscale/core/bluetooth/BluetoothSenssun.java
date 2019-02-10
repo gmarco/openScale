@@ -40,6 +40,7 @@ public class BluetoothSenssun extends BluetoothCommunication {
     private UUID cmdMeasurementCharacteristic;
 
     private boolean scaleGotUserData;
+    private boolean scaleGotTime,scaleGotDate;
     private byte WeightFatMus = 0;
     private ScaleMeasurement measurement;
 
@@ -51,6 +52,63 @@ public class BluetoothSenssun extends BluetoothCommunication {
     public String driverName() {
         return "Senssun";
     }
+
+    private void doChecksum(byte[] message){
+      byte verify = 0;
+      for (int i = 1; i < message.length - 2; i++) {
+          verify = (byte) (verify + message[i]);
+      }
+      message[message.length - 2] = verify;
+    }
+
+    private void sendToScale(){
+      sendUserData();
+      if (scaleGotUserData){
+        sendDate();
+        if (scaleGotDate){
+          sendTime();
+        }
+      }
+    }
+
+    private void sendDate() {
+        if (scaleGotDate){
+          return;
+        }
+        Calendar cal = Calendar.getInstance();
+
+        byte message[] = new byte[]{(byte)0xA5, (byte)0x30, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00};
+        message[2] = (byte)Integer.parseInt(Long.toHexString(Integer.valueOf(String.valueOf(cal.get(Calendar.YEAR)).substring(2))), 16);
+
+        String DayLength=Long.toHexString(cal.get(Calendar.DAY_OF_YEAR));
+        DayLength=DayLength.length()==1?"000"+DayLength:
+                DayLength.length()==2?"00"+DayLength:
+                        DayLength.length()==3?"0"+DayLength:DayLength;
+
+        message[3]=(byte)Integer.parseInt(DayLength.substring(0,2), 16);
+        message[4]=(byte)Integer.parseInt(DayLength.substring(2,4), 16);
+
+        doChecksum(message);
+
+        writeBytes(cmdMeasurementCharacteristic, message);
+    }
+
+    private void sendTime() {
+        if (scaleGotTime){
+          return;
+        }
+        Calendar cal = Calendar.getInstance();
+
+        byte message[] = new byte[]{(byte)0xA5, (byte)0x31, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00};
+
+        message[2]=(byte)Integer.parseInt(Long.toHexString(cal.get(Calendar.HOUR_OF_DAY)), 16);
+        message[3]=(byte)Integer.parseInt(Long.toHexString(cal.get(Calendar.MINUTE)), 16);
+        message[4]=(byte)Integer.parseInt(Long.toHexString(cal.get(Calendar.SECOND)), 16);
+
+        doChecksum(message);
+
+        writeBytes(cmdMeasurementCharacteristic, message);
+  	}
 
     private void sendUserData(){
         if ( scaleGotUserData ){
@@ -65,11 +123,8 @@ public class BluetoothSenssun extends BluetoothCommunication {
         Timber.d("Request Saved User Measurements ");
         byte cmdByte[] = {(byte)0xa5, (byte)0x10, gender, age, height, (byte)0, (byte)0x0, (byte)0x0d2, (byte)0x00};
 
-        byte verify = 0;
-        for (int i = 1; i < cmdByte.length - 2; i++) {
-            verify = (byte) (verify + cmdByte[i]);
-        }
-        cmdByte[cmdByte.length - 2] = verify;
+        doChecksum(message);
+
         writeBytes(cmdMeasurementCharacteristic, cmdByte);
     }
 
@@ -93,9 +148,11 @@ public class BluetoothSenssun extends BluetoothCommunication {
                 }
                 break;
             case 1:
-                sendUserData();
+                sendToScale();
                 WeightFatMus = 0;
                 scaleGotUserData = false;
+                scaleGotDate = false;
+                scaleGotTime = false;
                 break;
             default:
                 // Finish init if everything is done
@@ -141,9 +198,15 @@ public class BluetoothSenssun extends BluetoothCommunication {
                 if (weightBytes[2] == (byte)0x10) {
                     scaleGotUserData = true;
                 }
+                if (weightBytes[2] == (byte)0x30) {
+                    scaleGotDate = true;
+                }
+                if (weightBytes[2] == (byte)0x31) {
+                    scaleGotTime = true;
+                }
                 break;
             case 0xa0:
-                sendUserData();
+                sendToScale();
                 break;
             case 0xaa:
                 float weight = Converters.fromUnsignedInt16Be(weightBytes, 2) / 10.0f; // kg
