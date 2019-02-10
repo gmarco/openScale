@@ -18,6 +18,8 @@ package com.health.openscale.core.bluetooth;
 
 import android.content.Context;
 
+import android.bluetooth.BluetoothGattService;
+
 import com.health.openscale.core.OpenScale;
 import com.health.openscale.core.datatypes.ScaleMeasurement;
 import com.health.openscale.core.datatypes.ScaleUser;
@@ -30,9 +32,15 @@ import java.util.UUID;
 import timber.log.Timber;
 
 public class BluetoothSenssun extends BluetoothCommunication {
-    private final UUID WEIGHT_MEASUREMENT_SERVICE = BluetoothGattUuid.fromShortCode(0xfff0);
-    private final UUID WEIGHT_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xfff1); // read, notify
-    private final UUID CMD_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xfff2); // write only
+    private final UUID MODEL_A_WEIGHT_MEASUREMENT_SERVICE = BluetoothGattUuid.fromShortCode(0xfff0);
+    private final UUID MODEL_A_WEIGHT_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xfff1); // read, notify
+    private final UUID MODEL_A_CMD_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xfff2); // write only
+
+    private final UUID MODEL_B_WEIGHT_MEASUREMENT_SERVICE = BluetoothGattUuid.fromShortCode(0xfff0);
+    private final UUID MODEL_B_WEIGHT_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xffb2); // read, notify
+    private final UUID MODEL_B_CMD_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xffb2); // write only
+
+    private UUID cmdMeasurementCharacteristic;
 
     private boolean scaleGotUserData;
     private boolean scaleGotTime,scaleGotDate;
@@ -95,18 +103,9 @@ public class BluetoothSenssun extends BluetoothCommunication {
         Timber.d("Request Saved User Measurements ");
         byte cmdByte[] = {(byte)0xa5, (byte)0x10, gender, age, height, (byte)0, (byte)0x0, (byte)0x0d2, (byte)0x00};
 
-<<<<<<< HEAD
-        byte verify = 0;
-        for (int i = 1; i < cmdByte.length - 2; i++) {
-            verify = (byte) (verify + cmdByte[i]);
-        }
-        cmdByte[cmdByte.length - 2] = verify;
-        writeBytes(CMD_MEASUREMENT_CHARACTERISTIC, cmdByte);
-=======
         doChecksum(cmdByte);
 
-        writeBytes(WEIGHT_MEASUREMENT_SERVICE, CMD_MEASUREMENT_CHARACTERISTIC, cmdByte);
->>>>>>> send calendar
+        writeBytes(cmdMeasurementCharacteristic, cmdByte);
     }
     private void sendDate() {
         if (scaleGotDate){
@@ -127,7 +126,7 @@ public class BluetoothSenssun extends BluetoothCommunication {
 
         doChecksum(message);
 
-        writeBytes(WEIGHT_MEASUREMENT_SERVICE, CMD_MEASUREMENT_CHARACTERISTIC, message);
+        writeBytes(cmdMeasurementCharacteristic, message);
     }
 
     private void sendTime() {
@@ -144,7 +143,7 @@ public class BluetoothSenssun extends BluetoothCommunication {
 
         doChecksum(message);
 
-        writeBytes(WEIGHT_MEASUREMENT_SERVICE, CMD_MEASUREMENT_CHARACTERISTIC, message);
+        writeBytes(cmdMeasurementCharacteristic, message);
   	}
 
     @Override
@@ -152,14 +151,22 @@ public class BluetoothSenssun extends BluetoothCommunication {
         Timber.d("Cmd Clean %d",stateNr);
         switch (stateNr) {
             case 0:
-<<<<<<< HEAD
-                setNotificationOn(WEIGHT_MEASUREMENT_CHARACTERISTIC);
-                sendUserData();
-=======
-                setNotificationOn(WEIGHT_MEASUREMENT_SERVICE, WEIGHT_MEASUREMENT_CHARACTERISTIC,
-                        BluetoothGattUuid.DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION);
+                for (BluetoothGattService gattService : getBluetoothGattServices()) {
+                  if (gattService.getUuid().equals(MODEL_A_WEIGHT_MEASUREMENT_SERVICE)) {
+                    cmdMeasurementCharacteristic = MODEL_A_CMD_MEASUREMENT_CHARACTERISTIC;
+                    setNotificationOn(MODEL_A_WEIGHT_MEASUREMENT_CHARACTERISTIC);
+                    Timber.d("Found a Model A");
+                    break;
+                  }
+                  if (gattService.getUuid().equals(MODEL_B_WEIGHT_MEASUREMENT_SERVICE)) {
+                    cmdMeasurementCharacteristic = MODEL_B_CMD_MEASUREMENT_CHARACTERISTIC;
+                    setNotificationOn(MODEL_B_WEIGHT_MEASUREMENT_CHARACTERISTIC);
+                    Timber.d("Found a Model B");
+                    break;
+                  }
+                }
+
                 sendToScale();
->>>>>>> send calendar
                 WeightFatMus = 0;
                 scaleGotUserData = false;
                 scaleGotDate = false;
