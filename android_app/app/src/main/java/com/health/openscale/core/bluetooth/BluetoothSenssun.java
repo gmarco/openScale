@@ -200,11 +200,12 @@ public class BluetoothSenssun extends BluetoothCommunication {
 
         if (data != null && !isBitSet(WeightFatMus, 3)) { //only if not saved
             parseBytes(data);
+            if (WeightFatMus == 0x07) { // if we got all Data -> save
+              saveUserData();
+            }
         }
 
-        if (isBitSet(WeightFatMus,2) ) {
-            addScaleData(measurement);
-        }
+
     }
 
     private void parseBytes(byte[] weightBytes) {
@@ -263,9 +264,7 @@ public class BluetoothSenssun extends BluetoothCommunication {
                 //date
                 break;
         }
-        if (!savedUserData){
-          measurement.setDateTime(new Date());
-          savedUserData = true;
-        }
+        measurement.setDateTime(new Date());
+
     }
 }
