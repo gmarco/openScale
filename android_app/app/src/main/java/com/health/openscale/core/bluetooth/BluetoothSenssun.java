@@ -18,12 +18,15 @@ package com.health.openscale.core.bluetooth;
 
 import android.content.Context;
 
+import android.bluetooth.BluetoothGattService;
+
 import com.health.openscale.core.OpenScale;
 import com.health.openscale.core.datatypes.ScaleMeasurement;
 import com.health.openscale.core.datatypes.ScaleUser;
 import com.health.openscale.core.utils.Converters;
 
 import java.util.Date;
+import java.util.Calendar;
 import java.util.UUID;
 
 import timber.log.Timber;
@@ -40,7 +43,7 @@ public class BluetoothSenssun extends BluetoothCommunication {
     private UUID cmdMeasurementCharacteristic;
 
     private boolean scaleGotUserData;
-    private boolean scaleGotTime,scaleGotDate;
+    private boolean scaleGotTime,scaleGotDate,savedUserData;
     private byte WeightFatMus = 0;
     private ScaleMeasurement measurement;
 
@@ -51,6 +54,14 @@ public class BluetoothSenssun extends BluetoothCommunication {
     @Override
     public String driverName() {
         return "Senssun";
+    }
+
+    private void saveUserData(){
+      if ( isBitSet(WeightFatMus,2)  && !savedUserData ) {
+          addScaleData(measurement);
+          WeightFatMus=0;
+          savedUserData = true;
+      }
     }
 
     private void doChecksum(byte[] message){
@@ -123,7 +134,7 @@ public class BluetoothSenssun extends BluetoothCommunication {
         Timber.d("Request Saved User Measurements ");
         byte cmdByte[] = {(byte)0xa5, (byte)0x10, gender, age, height, (byte)0, (byte)0x0, (byte)0x0d2, (byte)0x00};
 
-        doChecksum(message);
+        doChecksum(cmdByte);
 
         writeBytes(cmdMeasurementCharacteristic, cmdByte);
     }
@@ -146,13 +157,15 @@ public class BluetoothSenssun extends BluetoothCommunication {
                     break;
                   }
                 }
-                break;
-            case 1:
-                sendToScale();
                 WeightFatMus = 0;
                 scaleGotUserData = false;
                 scaleGotDate = false;
                 scaleGotTime = false;
+                savedUserData = false;
+                break;
+            case 1:
+                sendToScale();
+
                 break;
             default:
                 // Finish init if everything is done
@@ -168,7 +181,14 @@ public class BluetoothSenssun extends BluetoothCommunication {
 
     @Override
     protected boolean nextCleanUpCmd(int stateNr) {
-        return false;
+        switch (stateNr) {
+            case 0:
+                saveUserData();
+                break;
+            default:
+                return false;
+        }
+        return true;
     }
 
     @Override
@@ -243,6 +263,9 @@ public class BluetoothSenssun extends BluetoothCommunication {
                 //date
                 break;
         }
-        measurement.setDateTime(new Date());
+        if (!savedUserData){
+          measurement.setDateTime(new Date());
+          savedUserData = true;
+        }
     }
 }
