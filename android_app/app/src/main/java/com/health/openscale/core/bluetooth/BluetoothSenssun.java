@@ -29,9 +29,15 @@ import java.util.UUID;
 import timber.log.Timber;
 
 public class BluetoothSenssun extends BluetoothCommunication {
-    private final UUID WEIGHT_MEASUREMENT_SERVICE = BluetoothGattUuid.fromShortCode(0xfff0);
-    private final UUID WEIGHT_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xfff1); // read, notify
-    private final UUID CMD_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xfff2); // write only
+    private final UUID MODEL_A_WEIGHT_MEASUREMENT_SERVICE = BluetoothGattUuid.fromShortCode(0xfff0);
+    private final UUID MODEL_A_WEIGHT_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xfff1); // read, notify
+    private final UUID MODEL_A_CMD_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xfff2); // write only
+
+    private final UUID MODEL_B_WEIGHT_MEASUREMENT_SERVICE = BluetoothGattUuid.fromShortCode(0xfff0);
+    private final UUID MODEL_B_WEIGHT_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xffb2); // read, notify
+    private final UUID MODEL_B_CMD_MEASUREMENT_CHARACTERISTIC = BluetoothGattUuid.fromShortCode(0xffb5); // write only
+
+    private UUID cmdMeasurementCharacteristic;
 
     private boolean scaleGotUserData;
     private byte WeightFatMus = 0;
@@ -64,14 +70,27 @@ public class BluetoothSenssun extends BluetoothCommunication {
             verify = (byte) (verify + cmdByte[i]);
         }
         cmdByte[cmdByte.length - 2] = verify;
-        writeBytes(CMD_MEASUREMENT_CHARACTERISTIC, cmdByte);
+        writeBytes(cmdMeasurementCharacteristic, cmdByte);
     }
 
     @Override
     protected boolean nextInitCmd(int stateNr) {
         switch (stateNr) {
             case 0:
-                setNotificationOn(WEIGHT_MEASUREMENT_CHARACTERISTIC);
+                for (BluetoothGattService gattService : getBluetoothGattServices()) {
+                  if (gattService.getUuid().equals(MODEL_A_WEIGHT_MEASUREMENT_SERVICE)) {
+                    cmdMeasurementCharacteristic = MODEL_A_CMD_MEASUREMENT_CHARACTERISTIC;
+                    setNotificationOn(MODEL_A_WEIGHT_MEASUREMENT_CHARACTERISTIC);
+                    Timber.d("Found a Model A");
+                    break;
+                  }
+                  if (gattService.getUuid().equals(MODEL_B_WEIGHT_MEASUREMENT_SERVICE)) {
+                    cmdMeasurementCharacteristic = MODEL_B_CMD_MEASUREMENT_CHARACTERISTIC;
+                    setNotificationOn(MODEL_B_WEIGHT_MEASUREMENT_CHARACTERISTIC);
+                    Timber.d("Found a Model B");
+                    break;
+                  }
+                }
                 break;
             case 1:
                 sendUserData();
